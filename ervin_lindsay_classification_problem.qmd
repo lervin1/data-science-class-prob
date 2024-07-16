@@ -1,0 +1,155 @@
+---
+title: "Classification Prediction Problem"
+subtitle: |
+  | Data Science 3 with R (STAT 301-3)
+author: "Lindsay Ervin"
+date: today
+format:
+  html:
+    
+    toc: true
+    embed-resources: true
+execute:
+  echo: false
+  warning: false
+from: markdown+emoji 
+reference-location: margin
+citation-location: margin
+editor_options: 
+  chunk_output_type: console
+---
+
+
+::: {.callout-tip icon=false}
+
+## Github Repo Link
+
+[My Github Repo Link](https://github.com/stat301-3-2024-spring/classification-pred-prob-lervin1.git)
+
+:::
+
+```{r}
+#| label: load-packages-data
+#| echo: false
+
+# load packages
+library(here)
+library(tidyverse)
+
+# load necessary data
+load(here("data/train_airbnb.rda"))
+load(here("figures/combined_results.rda"))
+```
+
+
+## Introduction
+
+This report summarizes the processes I went through in order to complete the Kaggle competition for the classification prediction problem. Our class utilized the Using the [Airbnb Dataset](https://www.kaggle.com/competitions/classification-spring-2024-airbnb-super-host/data) off Kaggle to effectively predict if a host is a superhost or not (`host_is_superhost`). The main purpose of this is to effectively use machine learning techniques to explore various different approaches used to model this data and have the best possible predictions. The testing dataset is unknown to us, and with each Kaggle submission we are able to see how our models did on the testing dataset.
+
+For the purpose of this assignment and this report, the two models I selected was a boosted tree model using a majority of the predictor variables, as well as a different boosted tree model using predictors that I picked out as a result of data exploration.
+
+## Getting to Know Our Target Variable
+
+It is important to be familiar with our target variable `host_is_superhost`. Outlined in @fig-1, We can see the distribution of our target variable.
+
+![A barplot indicating whether a host is a superhost or not, as 0 marks a host that is not a superhost and 1 marks one that is a superhost.](figures/fig_1.png){#fig-1}
+
+The distribution of our target variable is pretty balanced. There is only a slight imbalance as there are less host that are superhosts than hosts that are not superhosts. This is still important to note when deciding whether to use stratified sampling or not later on in the process.
+
+
+## Data Preparation
+
+In order to preparing for he modeling process, I did extensive data cleaning. First, there was variables that were expressed as a percentage that I had to take care of. I fixed this by turning it into a numeric and dividing the number by 100 to take into account that it was a percentage. Then, in order to make sure the modeling process goes smoothly, there were variables that needed to be turned into factor variables. This is necessary so that when creating recipes, these variables can be dummied. It is also important to note that it is difficult to handle date variables. Therefore, I created a variable that is numeric, and it essentially subtracts that date today and the date that the person registered to be a host. This is a great way to account for date variables and still include it in your recipe.
+
+It is also important to note that everything you do to the training data, you must complete for the testing data. This allows for consistency with the testing and training datasets, as well as generalization, which allows you to make accurate accurate predictions on new, unforeseen data.
+
+For each of my attempts, I utilized the same initial setup process. I decided to use cross-validation to create my folds data that will ultimately be used to fit/tune all of my models. I utilized a 5 fold cross-validation, repeated 3 times. This repetition allows for a more robust estimate of the model's performance. I also used stratified sampling, as I set the strata equal to our target variable `host_is_superhost`. This accounts for the somewhat uneven distribution of the target variable that I found earlier.
+
+## The Modeling Process
+
+### Trying Out Models
+
+To begin with this process, I decided to pick 5 models to tune/fit. I ran a Logistic Model, Elastic Net (EN) model, a Boosted Tree Model, a K-Nearest Neighbors (KNN) model, and a Random Forest model. 
+
+For each model, I created a pretty basic, kitchen sink recipe that included essentially all of the predictor variables, minus the id variables, the date variables, and variables that had a significant amount of missingness. For this first attempt I was pleasantly surprised by my results, as my boosted tree model performed the best at a `roc_auc` value of 0.92433. For my first submission to Kaggle, this is the model I ended up submitting.
+
+Due to time restraints I was not able to hit some of the models I wanted to in my first attempt. Because of this, my second attempt I utilized a Support Vector Machine with Polynomial Kernel (SVM Poly) model with both a lasso based recipe and a tree based recipe. Unfortunately, my results were not as I hoped (0.88507), as they were significantly lower than my original best performing boosted tree model in my first submission. Because of this, I decided to focus my efforts on the boosted tree model and dedicating time to the betterment of this specific type of model.
+
+### My Model Selection
+
+Like I mentioned earlier, I decided to dive deeper into figuring our how I could improve my boosted tree models. This goes into my third attempt and one of the submissions I have chosen in Kaggle, which is where I used data exploration and feature engineering to select variables that I viewed as high importance in my recipe. The first thing I did in order to select my variables is create a correlation matrix to see if there were any variables that were heavily correlated.
+
+```{r}
+#| label: fig-2
+#| echo: false
+#| fig-cap: A correlation matrix depicting all of the numeric variables in the training dataset.
+
+# creating corplot
+train_airbnb |> 
+  select_if(is.numeric) |> 
+  na.omit() |> 
+  cor() |> 
+  corrplot::corrplot(method = 'color', diag = TRUE, 
+                     type = "lower", tl.cex = 0.4, 
+                     tl.col ="black")
+```
+
+In @fig-2, we can see that there are a lot of variables that are heavily correlated. It is important to note that a lot of these variables are correlated because they possess variables that directly involve each other. It is important that we do not look at these variables too heavily.
+
+For the purpose of my recipe, I decided to include the numeric variables `review_scores_rating`, `review_scores_cleanliness`, `beds`, `accommodates`, `maximum_minimum_night`, and `host_total_listings_count`. I thought these variables would be good to look at based on the findings from @fig-2.
+
+I also decided to look at some categorical variables that I thought would be interesting/important for the feature engineered recipe. I looked at the variables `host_response_time`, `host_identity_verified`, and `room_type`. Below I will provide brief explanations on each of these variables.
+
+#### Host Response Time
+
+![A barplot faceted by the variable host_response_time.](figures/fig_3){#fig-3}
+
+This variable is something that I wanted to look into because I thought it would be interesting to look at the response times in relation to a host being a superhost or not. As seen in @fig-3, there are very few hosts that do not respond within an hour. This is expected when being an airbnb host, as it is important to be responsive. It is interesting to note, though, that more superhosts respond within an hour than non-superhosts. This ultimately makes sense.
+
+#### Host Identity Verified
+
+![A barplot faceted by the variable host_identity_verified.](figures/fig_4){#fig-4}
+
+In @fig-4 we can see the distribution of verified and unverified hosts in relation to whether or not they are a superhost. It seems that there are many more verified hosts than unverified hosts, which makes sense. What is interesting is that there are more verified/unverified non-superhosts than verified/unverified superhosts. This is interesting and unxpected in my opinion, but it is something that I will still include in my recipe.
+
+#### Room Type
+
+![A barplot faceted by the variable room_type.](figures/fig_5){#fig-5}
+
+In @fig-5 we can see histograms faceted by the type of room the airbnb is, in relation to whether or not the host is a superhost. It seems that many airbnbs are typically rented by the entire home/apartment, but there are still some where you can just rent a private room. It is interesting to see that many non-superhosts are renting out their entire homes/apartments as well as private rooms. This is something I find intriguing and will include in my recipe.
+
+### Model One
+
+Taking all of this data exploration into account, I decided to create a tree-based recipe using these specific variables and run a boosted tree model, because that model seemed to be performing the best. With all of this taken into account and after running my models, I received a `roc_auc` score of 0.90239. This score is moderately strong, but I felt like I could improve this score with a different approach.
+
+### Model Two
+
+With that being said, I decided that I was going to focus on improving my original boosted tree submission with the kitchen sink recipe. I decided to instead look into improving the hyperparamters and recipe to improve my model. 
+
+First, I decided that I was going to alter my recipe a bit. Instead of completely taking out the variables that had over 10% missingness, I decided to keep them, as they were all around the cusp of the typical 20% threshold. I would still utilize the step that imputes the missing values, which imputes the missing values with the mean and mode of the non-missing values. This is important to make sure we are not excluding important variables from the recipe.
+
+I also wanted to take a look at my tuning hyperparameters. In my original attempt, the randomly selected predictors (mtry) was 5, the best number of trees was 500, and the best minimum nodes (min_n) was 2. Looking back at my tuning hyperparameters within the boosted tree r-scipt, these were essentially the highest values of my ranges, therefore I decided to increase my ranges for my next attempt.
+
+![An autoplot further visualizing the tuning hyperparameters of my first boosted tree submission.](figures/fig_6){#fig-6}
+
+@fig-6 further visualized my hypertuning parameters, and proves that I needed to increase the range of my randomly selected predictors (mtry) and trees.
+
+With this taken into account, I decided to run a boosted tree model with the recipe I described above as well as tuning hyperparameters that closely align with my findings. I increased my `mtry` range to (20,50) as well as increased my tree range to (1000,2000). These changes were ultimately what I needed to make my model better, as I received a `roc_auc` value of 0.95619.
+
+### Analyzing My Results
+
+```{r}
+#| label: fig-7
+#| echo: false
+#| fig-cap: A table expressing the tuning hyperparameters and roc_auc values for my two submissions.
+
+combined_results
+```
+
+As we can see in @fig-7 and from my explanation above, this is a table clearly expressing the best hypertuning parameters and `roc_auc` values from my submissions that I have chosen. Because of these values and how my folds chose the optimal tuning parameters, I decided to perform the final fit on these models and ultimately submit them to Kaggle.
+
+## Submission & Conclusion
+
+Like I mentioned throughout this report, I chose two boosted tree models to submit to the Kaggle competition. I chose a boosted tree model based on data exploration and a boosted tree model based on the best hypertuning parameters. This was something I chose based on my original attempt, and how my boosted tree model was the best from the start.
+
+Ultimately, this process was lengthy as I pursued 5 attempts, as well as many Github errors and accidental Kaggle submissions. Nevertheless, I learned a lot about the feature engineering process and the process of modeling with R. I am content with my submissions and my process, and I am curious to see how my submissions with do on the private leaderboard. With that being said, this process was great and I enjoyed competing in this competition and learning more about the machine learning process.
